@@ -39,7 +39,7 @@
       gap: 20px;
     }
 
-    /* Top Header: Progress Bar + Equation Visual */
+    /* Top Header: Progress Bar + Equation Visual + Hint */
     .top-bar {
       display: flex;
       flex-direction: column;
@@ -145,13 +145,11 @@
       transition: border-color 0.25s ease, background-color 0.25s ease, transform 0.25s ease;
     }
 
-    /* Solved state before switching question */
     .equation-pill.solved {
       border-color: #22c55e;
       background-color: rgba(34, 197, 94, 0.12);
     }
 
-    /* Animation when a new question arrives */
     @keyframes newQuestionFlash {
       0% {
         transform: translateY(-10px) scale(0.95);
@@ -192,6 +190,30 @@
 
     .eq-correct-ans {
       color: #4ade80;
+    }
+
+    /* Hint Box */
+    .hint-box {
+      display: none;
+      background: rgba(250, 204, 21, 0.08);
+      border: 1px solid rgba(250, 204, 21, 0.35);
+      color: #fef08a;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.45;
+      max-width: 620px;
+      text-align: center;
+    }
+
+    .hint-box.active {
+      display: block;
+    }
+
+    .hint-box strong {
+      color: #facc15;
+      font-weight: 700;
     }
 
     /* SVG Number Line */
@@ -253,7 +275,9 @@
 
     .practice-controls {
       display: none;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 10px;
     }
 
@@ -333,6 +357,17 @@
       color: #fda4af;
     }
 
+    .btn-hint {
+      background-color: rgba(250, 204, 21, 0.1);
+      color: #facc15;
+      border-color: rgba(250, 204, 21, 0.35);
+    }
+
+    .btn-hint:hover {
+      background-color: rgba(250, 204, 21, 0.2);
+      color: #fef08a;
+    }
+
     .btn-primary {
       background-color: #0284c7;
       color: #ffffff;
@@ -395,6 +430,9 @@
           <span class="eq-mystery">?</span>
         </div>
       </div>
+
+      <!-- Click-to-reveal Hint Box -->
+      <div class="hint-box" id="hintBox"></div>
     </div>
 
     <!-- Interactive Number Line -->
@@ -438,6 +476,7 @@
       </div>
 
       <div class="practice-controls" id="practiceControls">
+        <button class="btn btn-hint" id="hintBtn">Show Hint</button>
         <input type="number" id="answerInput" class="answer-input" placeholder="Answer" />
         <button class="btn btn-primary" id="checkBtn">Check</button>
         <span class="feedback-msg" id="feedbackMsg"></span>
@@ -463,6 +502,7 @@
     const equationPill = document.getElementById('equationPill');
     const qBadge = document.getElementById('qBadge');
     const modeTag = document.getElementById('modeTag');
+    const hintBox = document.getElementById('hintBox');
 
     const resetBtn = document.getElementById('resetBtn');
     const modeButtons = document.getElementById('modeButtons');
@@ -472,6 +512,7 @@
     const progressWrapper = document.getElementById('progressWrapper');
     const progressLabel = document.getElementById('progressLabel');
     const progressFill = document.getElementById('progressFill');
+    const hintBtn = document.getElementById('hintBtn');
     const answerInput = document.getElementById('answerInput');
     const checkBtn = document.getElementById('checkBtn');
     const feedbackMsg = document.getElementById('feedbackMsg');
@@ -670,7 +711,7 @@
       activeMarker = null;
     }
 
-    // Question Generation for Easy & Hard Modes
+    // Question & Hint Generation
     function generateQuestions(difficulty) {
       const list = [];
       while (list.length < TOTAL_QUESTIONS) {
@@ -678,6 +719,7 @@
         const e = Math.floor(Math.random() * 21) - 10; // -10 to 10
         const diff = e - s;
         const absJump = Math.abs(diff);
+        const stepWord = absJump === 1 ? 'step' : 'steps';
         const prev = list[list.length - 1];
         const isDuplicateOfPrev = prev && prev.start === s && prev.diff === diff;
 
@@ -685,29 +727,35 @@
 
         if (difficulty === 'easy') {
           if (s < 0 || e < 0) {
+            const dir = diff > 0 ? 'RIGHT' : 'LEFT';
+            const opWord = diff > 0 ? `Adding ${absJump}` : `Subtracting ${absJump}`;
+            const hint = `Drag <strong>Start</strong> to <strong>${s}</strong>. ${opWord} means moving <strong>${absJump} ${stepWord} to the ${dir}</strong> with the <strong>End</strong> dot.`;
+
             list.push({
               start: s,
               diff: diff,
               answer: e,
               opDisplay: diff > 0 ? '+' : '−',
-              jumpDisplay: `${absJump}`
+              jumpDisplay: `${absJump}`,
+              hint: hint
             });
           }
         } else {
           // Hard mode: Double negatives (- (-x)) and sign combos (+ (-x), - (+x))
-          let opDisplay, jumpDisplay;
+          let opDisplay, jumpDisplay, hint;
           if (diff > 0) {
-            // Net right movement represented as subtracting a negative: s - (-x)
             opDisplay = '−';
             jumpDisplay = `(−${absJump})`;
+            hint = `<strong>Double negative rule:</strong> Subtracting a negative <strong>− (−${absJump})</strong> is the same as adding <strong>+ ${absJump}</strong>. Drag <strong>Start</strong> to <strong>${s}</strong>, then move <strong>End ${absJump} ${stepWord} to the RIGHT</strong>.`;
           } else {
-            // Net left movement represented as + (-x) or - (+x)
             if (Math.random() < 0.65) {
               opDisplay = '+';
               jumpDisplay = `(−${absJump})`;
+              hint = `<strong>Plus-minus rule:</strong> Adding a negative <strong>+ (−${absJump})</strong> is the same as subtracting <strong>− ${absJump}</strong>. Drag <strong>Start</strong> to <strong>${s}</strong>, then move <strong>End ${absJump} ${stepWord} to the LEFT</strong>.`;
             } else {
               opDisplay = '−';
               jumpDisplay = `(+${absJump})`;
+              hint = `<strong>Minus-plus rule:</strong> Subtracting a positive <strong>− (+${absJump})</strong> is the same as <strong>− ${absJump}</strong>. Drag <strong>Start</strong> to <strong>${s}</strong>, then move <strong>End ${absJump} ${stepWord} to the LEFT</strong>.`;
             }
           }
 
@@ -716,11 +764,23 @@
             diff: diff,
             answer: e,
             opDisplay: opDisplay,
-            jumpDisplay: jumpDisplay
+            jumpDisplay: jumpDisplay,
+            hint: hint
           });
         }
       }
       return list;
+    }
+
+    function hideHint() {
+      hintBox.classList.remove('active');
+      hintBtn.textContent = 'Show Hint';
+    }
+
+    function toggleHint() {
+      if (!isPracticeMode || isTransitioning) return;
+      const isShowing = hintBox.classList.toggle('active');
+      hintBtn.textContent = isShowing ? 'Hide Hint' : 'Show Hint';
     }
 
     function loadPracticeQuestion() {
@@ -734,6 +794,11 @@
 
       renderQuestionEquation(q);
       triggerNewQuestionAnimation();
+
+      // Prepare new hint (hidden until clicked)
+      hintBox.innerHTML = q.hint;
+      hideHint();
+      hintBtn.disabled = false;
 
       resetDots();
 
@@ -751,7 +816,6 @@
       questions = generateQuestions(difficulty);
       currentQuestionIndex = 0;
 
-      // Apply difficulty styling
       if (difficulty === 'hard') {
         modeTag.textContent = 'Hard Mode';
         modeTag.className = 'mode-tag hard';
@@ -781,6 +845,7 @@
       qBadge.classList.remove('active');
       equationPill.classList.remove('solved', 'new-question');
       practiceControls.classList.remove('active');
+      hideHint();
 
       resetDots();
     }
@@ -812,6 +877,8 @@
             loadPracticeQuestion();
           } else {
             equationPill.classList.remove('solved');
+            hideHint();
+            hintBtn.disabled = true;
             progressLabel.textContent = 'Completed 10 of 10!';
             qBadge.textContent = 'DONE';
             equationPill.innerHTML = `<span class="eq-correct-ans">10 / 10 Complete!</span>`;
@@ -837,6 +904,7 @@
     resetBtn.addEventListener('click', resetDots);
     easyPracticeBtn.addEventListener('click', () => startPractice('easy'));
     hardPracticeBtn.addEventListener('click', () => startPractice('hard'));
+    hintBtn.addEventListener('click', toggleHint);
     exitPracticeBtn.addEventListener('click', exitPractice);
     checkBtn.addEventListener('click', checkAnswer);
 
