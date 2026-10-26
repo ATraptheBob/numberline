@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Number Line (-10 to 10)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .board {
+      background: #ffffff;
+      width: 100%;
+      max-width: 1050px;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+      padding: 40px 24px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      max-height: 240px;
+      overflow: visible;
+      touch-action: none;
+    }
+
+    .tick-label {
+      font-size: 16px;
+      font-weight: 600;
+      fill: #475569;
+      transition: fill 0.15s ease, font-weight 0.15s ease;
+    }
+
+    .tick-label.zero {
+      font-size: 18px;
+      font-weight: 800;
+      fill: #0f172a;
+    }
+
+    .draggable-group {
+      cursor: grab;
+      transition: filter 0.15s ease;
+    }
+
+    .draggable-group:hover {
+      filter: brightness(1.06);
+    }
+
+    .draggable-group.dragging {
+      cursor: grabbing;
+    }
+
+    .handle-label {
+      font-size: 13px;
+      font-weight: 700;
+      fill: #ffffff;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .reset-btn {
+      background-color: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .reset-btn:hover {
+      background-color: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .reset-btn:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="board">
+    <svg id="numberLine" viewBox="0 0 1000 220">
+      <defs>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.18" />
+        </filter>
+      </defs>
+
+      <!-- Static Axis & Ticks -->
+      <g id="axisLayer"></g>
+
+      <!-- Highlight Bar Between Start & End -->
+      <line id="rangeHighlight" y1="110" y2="110" stroke="#94a3b8" stroke-width="6" stroke-linecap="round" opacity="0.35" />
+
+      <!-- END Marker (Orange) -->
+      <g id="endMarker" class="draggable-group" filter="url(#shadow)">
+        <!-- Stem & Badge below line so Start and End never block each other -->
+        <line x1="0" y1="110" x2="0" y2="172" stroke="#f97316" stroke-width="2.5" />
+        <rect x="-28" y="168" width="56" height="26" rx="6" fill="#f97316" />
+        <text x="0" y="185" text-anchor="middle" class="handle-label">End</text>
+        <!-- Dot on the line -->
+        <circle id="endDot" cx="0" cy="110" r="11" fill="#f97316" stroke="#ffffff" stroke-width="3" />
+      </g>
+
+      <!-- START Marker (Blue) -->
+      <g id="startMarker" class="draggable-group" filter="url(#shadow)">
+        <!-- Stem & Badge above line -->
+        <line x1="0" y1="110" x2="0" y2="48" stroke="#2563eb" stroke-width="2.5" />
+        <rect x="-32" y="22" width="64" height="26" rx="6" fill="#2563eb" />
+        <text x="0" y="39" text-anchor="middle" class="handle-label">Start</text>
+        <!-- Dot on the line -->
+        <circle id="startDot" cx="0" cy="110" r="11" fill="#2563eb" stroke="#ffffff" stroke-width="3" />
+      </g>
+    </svg>
+
+    <div class="controls">
+      <button class="reset-btn" id="resetBtn">Reset</button>
+    </div>
+  </div>
+
+  <script>
+    const MIN = -10;
+    const MAX = 10;
+    const START_X = 60;
+    const END_X = 940;
+    const LINE_Y = 110;
+    const STEP = (END_X - START_X) / (MAX - MIN);
+
+    const svg = document.getElementById('numberLine');
+    const axisLayer = document.getElementById('axisLayer');
+    const startMarker = document.getElementById('startMarker');
+    const endMarker = document.getElementById('endMarker');
+    const rangeHighlight = document.getElementById('rangeHighlight');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let startVal = 0;
+    let endVal = 0;
+    let activeMarker = null;
+
+    function valToX(val) {
+      return START_X + (val - MIN) * STEP;
+    }
+
+    function xToVal(x) {
+      const raw = MIN + (x - START_X) / STEP;
+      return Math.max(MIN, Math.min(MAX, Math.round(raw)));
+    }
+
+    function drawAxis() {
+      // Main horizontal line with arrows
+      const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      axisLine.setAttribute('x1', START_X - 30);
+      axisLine.setAttribute('y1', LINE_Y);
+      axisLine.setAttribute('x2', END_X + 30);
+      axisLine.setAttribute('y2', LINE_Y);
+      axisLine.setAttribute('stroke', '#334155');
+      axisLine.setAttribute('stroke-width', '3');
+      axisLine.setAttribute('stroke-linecap', 'round');
+      axisLayer.appendChild(axisLine);
+
+      // Left & Right arrowheads
+      const leftArrow = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      leftArrow.setAttribute('points', `${START_X - 20},${LINE_Y - 7} ${START_X - 32},${LINE_Y} ${START_X - 20},${LINE_Y + 7}`);
+      leftArrow.setAttribute('fill', 'none');
+      leftArrow.setAttribute('stroke', '#334155');
+      leftArrow.setAttribute('stroke-width', '3');
+      leftArrow.setAttribute('stroke-linecap', 'round');
+      leftArrow.setAttribute('stroke-linejoin', 'round');
+      axisLayer.appendChild(leftArrow);
+
+      const rightArrow = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      rightArrow.setAttribute('points', `${END_X + 20},${LINE_Y - 7} ${END_X + 32},${LINE_Y} ${END_X + 20},${LINE_Y + 7}`);
+      rightArrow.setAttribute('fill', 'none');
+      rightArrow.setAttribute('stroke', '#334155');
+      rightArrow.setAttribute('stroke-width', '3');
+      rightArrow.setAttribute('stroke-linecap', 'round');
+      rightArrow.setAttribute('stroke-linejoin', 'round');
+      axisLayer.appendChild(rightArrow);
+
+      // Ticks and numbers
+      for (let i = MIN; i <= MAX; i++) {
+        const x = valToX(i);
+        const isZero = i === 0;
+
+        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y1', isZero ? LINE_Y - 16 : LINE_Y - 10);
+        tick.setAttribute('y2', isZero ? LINE_Y + 16 : LINE_Y + 10);
+        tick.setAttribute('stroke', isZero ? '#0f172a' : '#64748b');
+        tick.setAttribute('stroke-width', isZero ? '3.5' : '2');
+        tick.setAttribute('stroke-linecap', 'round');
+        axisLayer.appendChild(tick);
+
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', x);
+        label.setAttribute('y', LINE_Y + 42);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('class', isZero ? 'tick-label zero' : 'tick-label');
+        label.textContent = i;
+        axisLayer.appendChild(label);
+      }
+    }
+
+    function updatePositions() {
+      const startX = valToX(startVal);
+      const endX = valToX(endVal);
+
+      startMarker.setAttribute('transform', `translate(${startX}, 0)`);
+      endMarker.setAttribute('transform', `translate(${endX}, 0)`);
+
+      rangeHighlight.setAttribute('x1', startX);
+      rangeHighlight.setAttribute('x2', endX);
+
+      // If both dots sit on the same number, make the outer ring visible on both
+      const endDot = document.getElementById('endDot');
+      if (startVal === endVal) {
+        endDot.setAttribute('r', '15');
+      } else {
+        endDot.setAttribute('r', '11');
+      }
+    }
+
+    function getSVGX(evt) {
+      const pt = svg.createSVGPoint();
+      pt.x = evt.clientX;
+      pt.y = evt.clientY;
+      return pt.matrixTransform(svg.getScreenCTM().inverse()).x;
+    }
+
+    function startDrag(markerType, evt) {
+      evt.preventDefault();
+      activeMarker = markerType;
+      const el = markerType === 'start' ? startMarker : endMarker;
+      el.classList.add('dragging');
+      el.setPointerCapture(evt.pointerId);
+    }
+
+    function onDrag(evt) {
+      if (!activeMarker) return;
+      const svgX = getSVGX(evt);
+      const snappedVal = xToVal(svgX);
+
+      if (activeMarker === 'start' && snappedVal !== startVal) {
+        startVal = snappedVal;
+        updatePositions();
+      } else if (activeMarker === 'end' && snappedVal !== endVal) {
+        endVal = snappedVal;
+        updatePositions();
+      }
+    }
+
+    function endDrag(evt) {
+      if (!activeMarker) return;
+      const el = activeMarker === 'start' ? startMarker : endMarker;
+      el.classList.remove('dragging');
+      if (el.hasPointerCapture(evt.pointerId)) {
+        el.releasePointerCapture(evt.pointerId);
+      }
+      activeMarker = null;
+    }
+
+    // Event Listeners for both mouse and touch screens
+    startMarker.addEventListener('pointerdown', (e) => startDrag('start', e));
+    endMarker.addEventListener('pointerdown', (e) => startDrag('end', e));
+    window.addEventListener('pointermove', onDrag);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+
+    resetBtn.addEventListener('click', () => {
+      startVal = 0;
+      endVal = 0;
+      updatePositions();
+    });
+
+    // Initialize
+    drawAxis();
+    updatePositions();
+  </script>
+</body>
+</html>
