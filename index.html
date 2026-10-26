@@ -54,19 +54,30 @@
       align-items: center;
       gap: 6px;
       width: 100%;
-      max-width: 340px;
+      max-width: 360px;
     }
 
     .progress-wrapper.active {
       display: flex;
     }
 
-    .progress-label {
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
       font-size: 12px;
       font-weight: 700;
       color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 0.6px;
+    }
+
+    .mode-tag.easy {
+      color: #38bdf8;
+    }
+
+    .mode-tag.hard {
+      color: #f43f5e;
     }
 
     .progress-track {
@@ -84,6 +95,10 @@
       background: #38bdf8;
       border-radius: 999px;
       transition: width 0.35s ease;
+    }
+
+    .progress-fill.hard {
+      background: #f43f5e;
     }
 
     .equation-container {
@@ -104,6 +119,11 @@
       text-transform: uppercase;
     }
 
+    .q-badge.hard {
+      background: #f43f5e;
+      color: #ffffff;
+    }
+
     .q-badge.active {
       display: inline-block;
     }
@@ -120,7 +140,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      min-width: 220px;
+      min-width: 240px;
       justify-content: center;
       transition: border-color 0.25s ease, background-color 0.25s ease, transform 0.25s ease;
     }
@@ -226,6 +246,11 @@
       min-height: 44px;
     }
 
+    .mode-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
     .practice-controls {
       display: none;
       align-items: center;
@@ -286,6 +311,28 @@
       transform: scale(0.98);
     }
 
+    .btn-easy {
+      background-color: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .btn-easy:hover {
+      background-color: rgba(56, 189, 248, 0.22);
+      color: #7dd3fc;
+    }
+
+    .btn-hard {
+      background-color: rgba(244, 63, 94, 0.12);
+      color: #fb7185;
+      border-color: rgba(244, 63, 94, 0.4);
+    }
+
+    .btn-hard:hover {
+      background-color: rgba(244, 63, 94, 0.22);
+      color: #fda4af;
+    }
+
     .btn-primary {
       background-color: #0284c7;
       color: #ffffff;
@@ -329,7 +376,10 @@
     <!-- Top Equation & Practice Progress -->
     <div class="top-bar">
       <div class="progress-wrapper" id="progressWrapper">
-        <div class="progress-label" id="progressLabel">Question 1 of 10</div>
+        <div class="progress-header">
+          <span id="modeTag" class="mode-tag easy">Easy Mode</span>
+          <span id="progressLabel">Question 1 of 10</span>
+        </div>
         <div class="progress-track">
           <div class="progress-fill" id="progressFill"></div>
         </div>
@@ -381,7 +431,11 @@
     <!-- Bottom Bar -->
     <div class="bottom-bar">
       <button class="btn" id="resetBtn">Reset Dots</button>
-      <button class="btn" id="startPracticeBtn">Practice</button>
+
+      <div class="mode-buttons" id="modeButtons">
+        <button class="btn btn-easy" id="easyPracticeBtn">Practice: Easy</button>
+        <button class="btn btn-hard" id="hardPracticeBtn">Practice: Hard</button>
+      </div>
 
       <div class="practice-controls" id="practiceControls">
         <input type="number" id="answerInput" class="answer-input" placeholder="Answer" />
@@ -408,9 +462,12 @@
     const endMarker = document.getElementById('endMarker');
     const equationPill = document.getElementById('equationPill');
     const qBadge = document.getElementById('qBadge');
+    const modeTag = document.getElementById('modeTag');
 
     const resetBtn = document.getElementById('resetBtn');
-    const startPracticeBtn = document.getElementById('startPracticeBtn');
+    const modeButtons = document.getElementById('modeButtons');
+    const easyPracticeBtn = document.getElementById('easyPracticeBtn');
+    const hardPracticeBtn = document.getElementById('hardPracticeBtn');
     const practiceControls = document.getElementById('practiceControls');
     const progressWrapper = document.getElementById('progressWrapper');
     const progressLabel = document.getElementById('progressLabel');
@@ -422,11 +479,12 @@
 
     let startVal = 0;
     let endVal = 0;
-    let endDetached = false; // End stays locked to Start until End is dragged
+    let endDetached = false;
     let activeMarker = null;
 
     // Practice state
     let isPracticeMode = false;
+    let currentDifficulty = 'easy';
     let questions = [];
     let currentQuestionIndex = 0;
     let isTransitioning = false;
@@ -493,17 +551,27 @@
       }
     }
 
-    function renderEquation(start, diff, revealedAnswer = null) {
+    function renderLiveEquation(start, diff) {
       const op = diff >= 0 ? '+' : '−';
       const absJump = Math.abs(diff);
+      equationPill.innerHTML = `
+        <span class="eq-start">${start}</span>
+        <span class="eq-op">${op}</span>
+        <span class="eq-jump">${absJump}</span>
+        <span class="eq-op">=</span>
+        <span class="eq-mystery">?</span>
+      `;
+    }
+
+    function renderQuestionEquation(q, revealedAnswer = null) {
       const rhs = revealedAnswer !== null
         ? `<span class="eq-correct-ans">${revealedAnswer} ✓</span>`
         : `<span class="eq-mystery">?</span>`;
 
       equationPill.innerHTML = `
-        <span class="eq-start">${start}</span>
-        <span class="eq-op">${op}</span>
-        <span class="eq-jump">${absJump}</span>
+        <span class="eq-start">${q.start}</span>
+        <span class="eq-op">${q.opDisplay}</span>
+        <span class="eq-jump">${q.jumpDisplay}</span>
         <span class="eq-op">=</span>
         ${rhs}
       `;
@@ -511,7 +579,7 @@
 
     function triggerNewQuestionAnimation() {
       equationPill.classList.remove('solved', 'new-question');
-      void equationPill.offsetWidth; // Force reflow so animation restarts cleanly
+      void equationPill.offsetWidth;
       equationPill.classList.add('new-question');
     }
 
@@ -546,7 +614,7 @@
       updateHops();
 
       if (!isPracticeMode) {
-        renderEquation(startVal, endVal - startVal);
+        renderLiveEquation(startVal, endVal - startVal);
       }
     }
 
@@ -579,7 +647,6 @@
 
       if (activeMarker === 'start' && snappedVal !== startVal) {
         startVal = snappedVal;
-        // Keep End stuck to Start until End has been moved manually
         if (!endDetached) {
           endVal = snappedVal;
         }
@@ -603,18 +670,54 @@
       activeMarker = null;
     }
 
-    // Practice Mode Logic
-    function generateQuestions() {
+    // Question Generation for Easy & Hard Modes
+    function generateQuestions(difficulty) {
       const list = [];
       while (list.length < TOTAL_QUESTIONS) {
         const s = Math.floor(Math.random() * 19) - 9; // -9 to 9
         const e = Math.floor(Math.random() * 21) - 10; // -10 to 10
         const diff = e - s;
+        const absJump = Math.abs(diff);
         const prev = list[list.length - 1];
         const isDuplicateOfPrev = prev && prev.start === s && prev.diff === diff;
 
-        if (diff !== 0 && (s < 0 || e < 0) && !isDuplicateOfPrev) {
-          list.push({ start: s, diff: diff, answer: e });
+        if (diff === 0 || isDuplicateOfPrev) continue;
+
+        if (difficulty === 'easy') {
+          if (s < 0 || e < 0) {
+            list.push({
+              start: s,
+              diff: diff,
+              answer: e,
+              opDisplay: diff > 0 ? '+' : '−',
+              jumpDisplay: `${absJump}`
+            });
+          }
+        } else {
+          // Hard mode: Double negatives (- (-x)) and sign combos (+ (-x), - (+x))
+          let opDisplay, jumpDisplay;
+          if (diff > 0) {
+            // Net right movement represented as subtracting a negative: s - (-x)
+            opDisplay = '−';
+            jumpDisplay = `(−${absJump})`;
+          } else {
+            // Net left movement represented as + (-x) or - (+x)
+            if (Math.random() < 0.65) {
+              opDisplay = '+';
+              jumpDisplay = `(−${absJump})`;
+            } else {
+              opDisplay = '−';
+              jumpDisplay = `(+${absJump})`;
+            }
+          }
+
+          list.push({
+            start: s,
+            diff: diff,
+            answer: e,
+            opDisplay: opDisplay,
+            jumpDisplay: jumpDisplay
+          });
         }
       }
       return list;
@@ -629,7 +732,7 @@
       progressFill.style.width = `${(currentQuestionIndex / TOTAL_QUESTIONS) * 100}%`;
       qBadge.textContent = `Q${qNum}`;
 
-      renderEquation(q.start, q.diff);
+      renderQuestionEquation(q);
       triggerNewQuestionAnimation();
 
       resetDots();
@@ -642,12 +745,26 @@
       answerInput.focus();
     }
 
-    function startPractice() {
+    function startPractice(difficulty) {
       isPracticeMode = true;
-      questions = generateQuestions();
+      currentDifficulty = difficulty;
+      questions = generateQuestions(difficulty);
       currentQuestionIndex = 0;
 
-      startPracticeBtn.style.display = 'none';
+      // Apply difficulty styling
+      if (difficulty === 'hard') {
+        modeTag.textContent = 'Hard Mode';
+        modeTag.className = 'mode-tag hard';
+        progressFill.classList.add('hard');
+        qBadge.classList.add('hard');
+      } else {
+        modeTag.textContent = 'Easy Mode';
+        modeTag.className = 'mode-tag easy';
+        progressFill.classList.remove('hard');
+        qBadge.classList.remove('hard');
+      }
+
+      modeButtons.style.display = 'none';
       progressWrapper.classList.add('active');
       qBadge.classList.add('active');
       practiceControls.classList.add('active');
@@ -659,7 +776,7 @@
       isPracticeMode = false;
       isTransitioning = false;
 
-      startPracticeBtn.style.display = 'inline-block';
+      modeButtons.style.display = 'flex';
       progressWrapper.classList.remove('active');
       qBadge.classList.remove('active');
       equationPill.classList.remove('solved', 'new-question');
@@ -685,10 +802,9 @@
         feedbackMsg.className = 'feedback-msg correct';
         progressFill.style.width = `${((currentQuestionIndex + 1) / TOTAL_QUESTIONS) * 100}%`;
 
-        // Briefly highlight the solved equation before transitioning
         equationPill.classList.remove('new-question');
         equationPill.classList.add('solved');
-        renderEquation(currentQ.start, currentQ.diff, currentQ.answer);
+        renderQuestionEquation(currentQ, currentQ.answer);
 
         setTimeout(() => {
           currentQuestionIndex++;
@@ -719,7 +835,8 @@
     window.addEventListener('pointercancel', endDrag);
 
     resetBtn.addEventListener('click', resetDots);
-    startPracticeBtn.addEventListener('click', startPractice);
+    easyPracticeBtn.addEventListener('click', () => startPractice('easy'));
+    hardPracticeBtn.addEventListener('click', () => startPractice('hard'));
     exitPracticeBtn.addEventListener('click', exitPractice);
     checkBtn.addEventListener('click', checkAnswer);
 
